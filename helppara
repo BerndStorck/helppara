@@ -1,0 +1,33 @@
+#! /bin/bash
+#
+# helppara 1.2.0, 2022-10-01, 2022-10-08, 2022-12-15
+#
+# Versucht die Zeile aus der Hilfeseite eines Programms $1 zu extrahieren,
+# welche den Aufrufparameter $2 beschreibt.
+#
+# Bernd Storck, https://www.facebook.com/BStLinux/
+# 
+
+CGREP="grep --color=always"
+progname="$1"
+shift
+
+for i in $@;
+do
+  LEN="${#i}"
+  if (( LEN > 1 )); then                                                      # AUFRUF MIT
+    if [ "${i:0:2}" = '--' ]; then
+      $progname --help 2>&1 | $CGREP -E "^\s*\-[a-zA-Z0-9]\b[,;]{,1}\s+${i}"  # f.e.: "--count"
+      if [ "$?" -ne 0 ]; then
+        $progname --help 2>&1 | $CGREP -E "^\s*${i}"                          # f.e.: "ls --full-time"
+        if [ "$?" -ne 0 ]; then
+          $progname --help 2>&1 | $CGREP --color=always "\-\-${i:2}"          # f.e.: "grep --silent"
+        fi
+      fi
+    else
+      $progname --help 2>&1 | $CGREP -E "^\s*-${i:1:1}\b"                     # f.e: "-c"
+    fi
+  else
+    $progname --help 2>&1 | $CGREP -E "^\s*\-${i}\b"                          # f.e: "c"
+  fi
+done
