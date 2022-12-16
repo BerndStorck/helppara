@@ -1,6 +1,9 @@
 #! /bin/bash
 #
-# helppara 2.0.0, 2022-10-01, 2022-10-08, 2022-12-15, 2022-12-16
+# helppara 2.1.0, 2022-10-01, 2022-10-08, 2022-12-15, 2022-12-16
+#
+# Tries to extract the line from the help page of a program $1 which
+# describes the call parameter $2.
 #
 # Versucht die Zeile aus der Hilfeseite eines Programms $1 zu extrahieren,
 # welche den Aufrufparameter $2 beschreibt.
@@ -20,7 +23,28 @@ function getDescription {
   return "$wasFound"
 }
 
-for i in $@;
+# The following if clause for parameter parsing from param 2022-10-09:
+if [ "${1:0:1}" = '+' ]; then # 2020-08-11: Erzeugt aus "+ab" " -a -A -b -B"
+    paraString="$(tr -s ' ' <<< "$@")"
+  # paraString="$(sed 's:^+*::' <<< "$paraString")"
+    paraString="${1/+/}"
+    # echo "\$paraString = $paraString"
+    for ((i=0;i<${#paraString};i++)); do
+        capital="${paraString:i:1}"; capital="${capital^^}"
+        paraList+=" -${paraString:i:1} -${capital}"
+    done
+elif [ "${1:0:1}" = ':' ]; then # 2022-10-08: Erzeugt aus ":ab..." " -a -b ..."
+    paraString="$(tr -s ' ' <<< "$@")"
+    paraString="${1/:/}"
+    # echo "\$paraString = $paraString"
+    for ((i=0;i<${#paraString};i++)); do
+        paraList+=" -${paraString:i:1}"
+    done
+  else
+    paraList="$@"
+fi
+
+for i in $paraList;
 do
 wasFound=-1
   for j in "--help" "-h";
