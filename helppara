@@ -1,6 +1,6 @@
 #! /bin/bash
 #
-# helppara 2.1.0, 2022-10-01, 2022-10-08, 2022-12-15, 2022-12-16
+# helppara 3.0.0, 2022-10-01, 2022-10-08, 2022-12-15, 2022-12-16, 2022-12-18, 2022-12-19
 #
 # Tries to extract the line from the help page of a program $1 which
 # describes the call parameter $2.
@@ -11,60 +11,290 @@
 # Bernd Storck, https://www.facebook.com/BStLinux/
 #
 
-progname="$1"
+## Constants: ############################
+PROG_NAME="Parameter Investigator"
+ORIGINAL_SCRIPT_NAME="helppara"
+CURRENT_SCRIPT_NAME="${0##*/}"
+# TITLE="$CURRENT_SCRIPT_NAME"
+PROG_VERSION="3.0.0 / 2022-12-19"
+
+## Default values: ######################
+colorMode="--color=always"  # Highlighting for found parameters in resulting output.
+
+## Reading Options: ####################
+# Due to error tolerance the script accepts "-list" for "--list", "-all" for "--all" etc.
+if grep -vq '^[[:alnum:]]' <<< "$1" 2>&1 > /dev/null; then
+  OPTION="$(sed -E 's:^-{1}([a-z]{2,}):--\1:' <<< "$1")" # Converts "-" to "--".
+  shift
+fi
+
+progname="$1"  # Name of the program whose parameters are to be listed.
 shift
 
-function getDescription {
-  filter="$1"
-  [ -z $2 ] && helpParameterStyle="--help" || helpParameterStyle="$2"
+# (( TERMINAL_WIDTH = $(stty size | cut -d" " -f2) - 1 ))
+(( TERMINAL_WIDTH = "$(tput cols)" - 1 ))
 
-  $progname $helpParameterStyle 2>&1 | grep --color=always -E $filter
+PAGER="cat"  ## param: 2020-08-27 / 2022-10-09
+PAGER_PARAMETER=""
+
+function setPager {   ## param: 2020-08-27 …
+# Defines the pager program to use.
+  # for i in most less more  # most deactivated because of highlighting issue
+    for i in less more
+    do
+        if which $i &> /dev/null; then
+            PAGER="$i"
+            break
+        fi
+    done
+    [ "$PAGER" = "less" ] && PAGER_PARAMETER="-r"
+}
+
+### Define the language for the messages of this script: #####
+LANG_PREFIX=""
+case "${LANG::2}" in
+  de)
+    UI_LANG="Deutsch"
+    # PROG_TITLE="$CURRENT_SCRIPT_NAME -- Debian/Ubuntu Aktualisierungsprogramm (Version $PROG_VERSION)"
+    PARAMETER_LIST_TITLE="Mögliche Aufrufparameter: "
+    NOT_APPLICABLE="nicht verfügbar"
+    BSD_TITLE="BSD-Parameter:"
+    ;;
+  en)
+    UI_LANG="English"
+    PARAMETER_LIST_TITLE="Possible parameters: "
+    NOT_APPLICABLE="N/A"
+    BSD_TITLE="BSD parameters:"
+    ;;
+  fr)
+    UI_LANG="Francais"
+    PARAMETER_LIST_TITLE="Paramètres d'appel possibles: "
+    NOT_APPLICABLE="pas disponible"
+    BSD_TITLE="Les paramètres BSD:"
+    ;;
+  *)
+    UI_LANG="English"
+    LANG_PREFIX="LANG=C"
+    PARAMETER_LIST_TITLE="Possible parameters: "
+    NOT_APPLICABLE="not applicable / nothing found"
+    BSD_TITLE="BSD parameters:"
+    ;;
+esac
+
+function set_ps_help_parameter {
+# Defines the parameters for calling the help page of the program ps.
+  case "${LANG::2}" in
+    de)
+      psHelp="--Hilfe"
+      psHelpParameter="a"
+      ;;
+    fr)
+      psHelp="--aide"
+      psHelpParameter="t"
+      ;;
+    *)
+      psHelp="--help"
+      psHelpParameter="a"
+      ;;
+  esac
+}
+
+function plotLine {
+# Prints a line with terminals width.
+  line=""
+  for ((i=1;i<=$TERMINAL_WIDTH;i++))
+  do
+    line="${line}-"
+  done
+  echo "$line"
+}
+
+function getParameterStyle {
+# Possible issue: Programs which do use "-h" not for help, like
+# the program ls does, and additionally might not use "--help".
+  returnValue=1      # Flag for unidentified "parameter style.
+  for i in "--Hilfe a" "--help" "-h";
+  do
+    if $progname $i &> /dev/null; then
+      helpParameterStyle="$i"
+      returnValue=0  # Stands for "success" / "parameter style indentified".
+      break  # "--help" prefered to "-h".
+    fi
+  done
+# echo "helpParameterStyle in getParameterStyle: $helpParameterStyle"
+# echo "returnValue in getParameterStyle(): $returnValue"
+  return "$returnValue"
+}
+
+function buildParameterList {
+# Variation of the function identically named in param.
+  paraList=""
+  if getParameterStyle; then
+    paraList="$($progname $helpParameterStyle                        |\
+                grep -Eo '^[[:blank:]]*-[[:alnum:]\?+],?[[:blank:]]' |\
+                grep -o '\-[[:alnum:]\?+]')"
+    paraList="$(sort <<< "$paraList" | uniq)"
+    [ "${#paraList}" -gt 1 ] && paraList="$(tr "\n" " " <<< "$paraList")"
+  fi
+# echo "paraList in buildParameterList(): $paraList"
+}
+
+function getDescription {
+# Core filter function.
+  filter="$1"
+  [ -z "$2" ] && helpParameterStyle="--help" || helpParameterStyle="$2"
+  $progname $helpParameterStyle 2> /dev/null | sed -E 's:^[[:space:]]+(.*)$: \1:' |\
+  grep "$colorMode" -E $filter
+
   wasFound="$?"
   return "$wasFound"
 }
 
-# The following if clause for parameter parsing from param 2022-10-09:
-if [ "${1:0:1}" = '+' ]; then # 2020-08-11: Erzeugt aus "+ab" " -a -A -b -B"
-    paraString="$(tr -s ' ' <<< "$@")"
-  # paraString="$(sed 's:^+*::' <<< "$paraString")"
-    paraString="${1/+/}"
-    # echo "\$paraString = $paraString"
-    for ((i=0;i<${#paraString};i++)); do
-        capital="${paraString:i:1}"; capital="${capital^^}"
-        paraList+=" -${paraString:i:1} -${capital}"
-    done
-elif [ "${1:0:1}" = ':' ]; then # 2022-10-08: Erzeugt aus ":ab..." " -a -b ..."
-    paraString="$(tr -s ' ' <<< "$@")"
-    paraString="${1/:/}"
-    # echo "\$paraString = $paraString"
-    for ((i=0;i<${#paraString};i++)); do
-        paraList+=" -${paraString:i:1}"
-    done
-  else
-    paraList="$@"
-fi
+### SETTINGS DEPENDING ON INVOCATION PARAMETERS ###############
+case "$OPTION" in
+  --list) # List all single letter parameters the program lists in it's help page.
+      buildParameterList
+
+      plotLine
+
+      # Calls param if available:
+      if [ -z "$paraList" ] && which param &> /dev/null; then
+          param "$progname" --list
+      else
+
+        for i in $(seq ${#progname})
+        do
+          indent="$indent "
+        done
+        indent="$indent   "
+        lenIndent="${#indent}"
+
+        ## 1. line (program specification):
+        echo -n "$progname :"
+        # Following grep forces case-sensitivity, because "whatis" and "man -f" do not.
+        whatis --long "$progname" | grep "^$progname" |\
+        cut -d"-" -f2- | fmt -"$TERMINAL_WIDTH" --prefix="$indent   "
+        echo
+
+        ## 2. line (Parameter list prefix):
+        echo -n "${indent}Mögliche Aufrufparameter: "
+
+        ## 3. line (parameter list):
+        if [ -n "$paraList" ]; then
+          echo -e "\n\n$paraList" | reformat -l "$lenIndent" -w "$(( TERMINAL_WIDTH - lenIndent ))"
+        else
+          echo "$NOT_APPLICABLE"
+        fi
+      fi # END "which param"
+
+      echo "$line"
+      exit 0
+      ;;
+  --all)
+      colorMode="--color=never"
+      buildParameterList
+      ;;
+  --pall)
+      setPager
+      buildParameterList
+      ;;
+  --lall)
+      PAGER="less"
+      PAGER_PARAMETER="-r"
+      buildParameterList
+      ;;
+  --mall)
+      PAGER="more"
+      buildParameterList
+      ;;
+  --chkall)
+      setPager
+      paraList=""
+      for letter in '\?' '\+' {0..9} {a..z} {A..Z}
+      do
+          paraList="$paraList -${letter}"
+      done;
+      unset -v letter
+      ;;
+  --version|-V)
+    echo -n "$CURRENT_SCRIPT_NAME ("
+    if [ "$CURRENT_SCRIPT_NAME" != "$ORIGINAL_SCRIPT_NAME" ]; then
+      echo -n "$PROG_NAME "
+    fi
+    echo "$PROG_VERSION)"
+    exit
+    ;;
+  -v|-\#)
+    echo "$PROG_VERSION"
+    exit
+    ;;
+  *)
+      # shift
+      # The following if clause for parameter parsing from param 2022-10-09:
+      if [ "${1:0:1}" = '+' ]; then # 2020-08-11: Generates " -a -A -b -B" from "+ab".
+          paraString="$(tr -s ' ' <<< "$@")"
+          paraString="${1/+/}"
+          for ((i=0;i<${#paraString};i++)); do
+              capital="${paraString:i:1}"; capital="${capital^^}"
+              paraList+=" -${paraString:i:1} -${capital}"
+          done
+      elif [ "${1:0:1}" = ':' ]; then # 2022-10-08: Generates " -a -b ..." from ":ab...".
+          paraString="$(tr -s ' ' <<< "$@")"
+          paraString="${1/:/}"
+          for ((i=0;i<${#paraString};i++)); do
+              paraList+=" -${paraString:i:1}"
+          done
+      else
+          paraList="$@"
+      fi
+esac
+
+# echo "progname: \"$progname\"";
+# echo "paraList: \"$paraList\""; # exit
 
 for i in $paraList;
 do
-wasFound=-1
-  for j in "--help" "-h";
-  do
-    if [ "$wasFound" -eq 0 ]; then
-      break
-    fi
-    LEN="${#i}"
-    if (( LEN > 1 )); then                                          # AUFRUF MIT
+  case "$progname" in
+    ps)
+      set_ps_help_parameter
       if [ "${i:0:2}" = '--' ]; then
-        if ! getDescription "-E \"^\s*\-[a-zA-Z0-9]\b[,;]{,1}\s+${i}\"" "$j"; then  # f.e.: "--count"
-          if ! getDescription "^\s*${i}" "$j"; then                                 # f.e.: "ls --full-time"
-            getDescription "\-\-${i:2}" "$j"                             # f.e.: "grep --silent"
-          fi
-        fi
+        getDescription "\-\-${i:2}" "$psHelp $psHelpParameter"  # f.e.: "ps --header"
+      elif grep -Eq '[[:alpha:]]{2,}\b' <<< "$i"; then
+        echo "$BSD_TITLE"
+        for ((j=0;j<${#i};j++))
+        do
+          $progname "$psHelp" "$psHelpParameter" 2> /dev/null |\
+          grep "$colorMode" -E "^\s{1,2}${i:j:1}\b"   # f.e: "c"
+        done
       else
-        getDescription "^\s*-${i:1:1}\b" "$j"                            # f.e: "-c"
+        i="$( sed -E 's/^-(.).*$/\1/' <<< $i )"  # "-x" --> "x"; removes "-" as first char.
+        # Searching in any case for "-x" and "x":
+        $progname "$psHelp" "$psHelpParameter" 2> /dev/null |\
+        grep "$colorMode" -E "^\s{1,2}-{,1}$i\b"   # f.e: "-C"
       fi
-    else
-      getDescription "^\s*\-${i}\b" "$j"                                 # f.e: "c"
-    fi
-  done
-done
+      ;;
+    *)
+      wasFound=-1
+      for j in "--help" "-h";
+      do
+        if [ "$wasFound" -eq 0 ]; then
+          break
+        fi
+        LEN="${#i}"
+        if (( LEN > 1 )); then                                          # AUFRUF MIT
+          if [ "${i:0:2}" = '--' ]; then
+            if ! getDescription "-E \"^\s*\-[a-zA-Z0-9]\b[,;]{,1}\s+${i}\"" "$j"; then  # f.e.: "--count"
+              if ! getDescription "^\s*${i}" "$j"; then                                 # f.e.: "ls --full-time"
+                getDescription "\-\-${i:2}" "$j"                             # f.e.: "grep --silent"
+              fi
+            fi
+          else
+            getDescription "^\s*-${i:1:1}\b" "$j"                            # f.e: "-c"
+          fi
+        else
+          getDescription "^\s*\-${i}\b" "$j"                                 # f.e: "c"
+        fi
+      done
+      ;;
+  esac
+done | "$PAGER" $PAGER_PARAMETER
