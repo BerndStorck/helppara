@@ -1,6 +1,6 @@
 #! /bin/bash
 #
-# helppara 3.0.0, 2022-10-01, 2022-10-08, 2022-12-15, 2022-12-16, 2022-12-18, 2022-12-19
+# helppara 3.0.1, 2022-10-01, 2022-10-08, 2022-12-15, 2022-12-16, 2022-12-18, 2022-12-19
 #
 # Tries to extract the line from the help page of a program $1 which
 # describes the call parameter $2.
@@ -16,7 +16,7 @@ PROG_NAME="Parameter Investigator"
 ORIGINAL_SCRIPT_NAME="helppara"
 CURRENT_SCRIPT_NAME="${0##*/}"
 # TITLE="$CURRENT_SCRIPT_NAME"
-PROG_VERSION="3.0.0 / 2022-12-19"
+PROG_VERSION="3.0.1 / 2022-12-19"
 
 ## Default values: ######################
 colorMode="--color=always"  # Highlighting for found parameters in resulting output.
@@ -56,26 +56,26 @@ case "${LANG::2}" in
   de)
     UI_LANG="Deutsch"
     # PROG_TITLE="$CURRENT_SCRIPT_NAME -- Debian/Ubuntu Aktualisierungsprogramm (Version $PROG_VERSION)"
-    PARAMETER_LIST_TITLE="Mögliche Aufrufparameter: "
+    PARAMETER_LIST_TITLE="Mögliche Aufrufparameter"
     NOT_APPLICABLE="nicht verfügbar"
     BSD_TITLE="BSD-Parameter:"
     ;;
   en)
     UI_LANG="English"
-    PARAMETER_LIST_TITLE="Possible parameters: "
+    PARAMETER_LIST_TITLE="Possible parameters"
     NOT_APPLICABLE="N/A"
     BSD_TITLE="BSD parameters:"
     ;;
   fr)
     UI_LANG="Francais"
-    PARAMETER_LIST_TITLE="Paramètres d'appel possibles: "
+    PARAMETER_LIST_TITLE="Paramètres d'appel possibles"
     NOT_APPLICABLE="pas disponible"
     BSD_TITLE="Les paramètres BSD:"
     ;;
   *)
     UI_LANG="English"
     LANG_PREFIX="LANG=C"
-    PARAMETER_LIST_TITLE="Possible parameters: "
+    PARAMETER_LIST_TITLE="Possible parameters"
     NOT_APPLICABLE="not applicable / nothing found"
     BSD_TITLE="BSD parameters:"
     ;;
@@ -177,7 +177,7 @@ case "$OPTION" in
         echo
 
         ## 2. line (Parameter list prefix):
-        echo -n "${indent}Mögliche Aufrufparameter: "
+        echo -n "${indent}${PARAMETER_LIST_TITLE}: "
 
         ## 3. line (parameter list):
         if [ -n "$paraList" ]; then
