@@ -1,7 +1,9 @@
-#! /bin/bash
+#!/usr/bin/env bash
 #
 # helppara
+# Version: Look at the first constant definitions below!
 #
+# Project Description:
 # Tries to extract the line from the help page of a program $1 which
 # describes the call parameter $2.
 #
@@ -9,19 +11,32 @@
 # welche den Aufrufparameter $2 beschreibt.
 #
 # The occasionally mentioned and used script "param" is a currently not
-# published script. It is the anchestor of the script "helppara", who
-# has special abillities, which helppara has not. Therefore I use param
-# as last ressort if helppara fails.
+# published script. It is the ancestor of the script "helppara", who has
+# special abilities, which "helppara" has not. Therefore I use "param"
+# as last resort if "helppara" fails.
 #
-# Bernd Storck, https://www.facebook.com/BStLinux/
+# Usage:
+# 
 #
+# Dependencies:
+# - 
+#
+# Author:    Bernd Storck
+# Contact:   https://www.facebook.com/BStLinux/#
+#
+# History:   2023-03-13, 2024-08-18
+#
+# Copyright: 2024, Bernd Storck
+# License:   GNU General Public License 3.0
+#
+
 
 ## Constants: ############################
 PROG_NAME="Parameter Investigator"
 ORIGINAL_SCRIPT_NAME="helppara"
 CURRENT_SCRIPT_NAME="${0##*/}"
 # TITLE="$CURRENT_SCRIPT_NAME"
-PROG_VERSION="3.3.1 / 2023-03-13"
+PROG_VERSION="3.3.2 / 2024-08-18"
 
 
 ### SELF DOCUMENTATION: VERSION INFOS #########################
@@ -51,11 +66,11 @@ unchanged_parameter_list="$*"  ## For potential calls of the script param.
 # "-all" for "--all" etc.
 if grep -vq '^[[:alnum:]]' <<< "$1" 2>&1 > /dev/null; then
   # Converts leading "-" to "--":
-  OPTION="$(sed -E 's:^-{1}([a-z]{2,}):--\1:' <<< "$1")"
+  OPTION="$(sed -E 's:^-{1}([a-z]{2,}):--\1:' <<< "$1")"  
   shift
 fi
 
-if command -v "$1" 2>&1 > /dev/null; then
+if command -v "$1" > /dev/null 2>&1; then
   targetProgram="$1"  # Name of the program whose parameters are to be listed.
   shift
 else  ## Catching not installed or mistyped program names:
@@ -83,6 +98,18 @@ function setPager {   ## param: 2020-08-27 …
     [ "$PAGER" = "less" ] && PAGER_PARAMETER="-r"
 }
 
+
+function getTerminalWidth {
+  if command -v tput &> /dev/null; then
+    TERMINAL_WIDTH=$(tput cols)
+  elif command -v stty &> /dev/null; then
+    TERMINAL_WIDTH=$(stty size | cut -d" " -f2)
+  else
+    echo "FEHLER: Die Terminalbreite konnnte nicht ermittelt werden." >&2
+    TERMINAL_WIDTH=0
+  fi
+  TERMINAL_WIDTH=$((TERMINAL_WIDTH - 1))
+}
 
 function getTerminalWidth {
   if command -v tput &> /dev/null; then
@@ -146,7 +173,8 @@ function set_ps_help_parameter {
 }
 
 function plotLine {
-  # Prints a line with terminals width and sets the global variable $line.
+  # Generates a horizontal line of dashes ('-') that spans the terminal's width,
+  # and assigns this line to the global variable 'line'. The line is then printed.
   getTerminalWidth  # Sets the value of $TERMINAL_WIDTH.
   line=""
   for (( i=1; i<=TERMINAL_WIDTH; i++ ))
@@ -202,9 +230,17 @@ function buildParameterList {
     else
       helpCommand="help $targetProgram"
     fi
+# echo -e "\nBEGIN Fehler"
+#   $helpCommand |\
+#   grep -Eo '^[[:blank:]]*-[[:alnum:]\?+],?[[:blank:]]'
+#   echo "---------------------------------------"
+#   $helpCommand |\
+#   grep -Eo '^[[:blank:]]*-[[:alnum:]\?+],?[[:blank:]]' |\
+#   grep -o '-[[:alnum:]\?+]'
+# echo -e "END Fehler\n"
     paraList="$($helpCommand                                         |\
                 grep -Eo '^[[:blank:]]*-[[:alnum:]\?+],?[[:blank:]]' |\
-                grep -o '\-[[:alnum:]\?+]')"
+                grep -o '-[[:alnum:]\?+]')"
     paraList="$(sort <<< "$paraList" | uniq)"
     [ "${#paraList}" -gt 1 ] && paraList="$(tr "\n" " " <<< "$paraList")"
   fi
@@ -239,11 +275,11 @@ function getDescription {
   wasFound=1  # Initial status is 'not found'.
   filter="$1"
 
-  if [ "${2:0:2}" = "--" ]; then  ## Masking dashes for grep's regex.
-    searchedParameter="$(sed -E 's/^(--)(.*)$/\\-\\-\2/' <<< $2)"
-  else
-    searchedParameter="$(sed -E 's/^(-)(.*)$/\\-\2/' <<< $2)"
-  fi
+# if [ "${2:0:2}" = "--" ]; then  ## Masking dashes for grep's regex.
+#   searchedParameter="$(sed -E 's/^(--)(.*)$/\\-\\-\2/' <<< $2)"
+# else
+#   searchedParameter="$(sed -E 's/^(-)(.*)$/\\-\2/' <<< $2)"
+# fi
 
  # single_line_filter contains a regex to identify single-line parameter
  # descriptions as opposed to descriptions that fill multiple lines.
@@ -265,12 +301,16 @@ function getDescription {
       echo "$first_access"
       wasFound=$?
     else
-      $targetProgram $helpParameterStyle 2> /dev/null       |\
-      sed -E "$minimize_to_one_leading_space"               |\
-      grep -A5 --color=never -E "$filter"                   |\
-      grep --color=never -B 6 -m1 -E "^\s+\-\-?[a-zA-Z0-9]" |\
-      head -n 1                                             |\
-      grep -E "$colorMode" "$searchedParameter\b"
+      second_access="$($targetProgram $helpParameterStyle 2> /dev/null   |\
+      sed -E "$minimize_to_one_leading_space"                            |\
+      grep -A3 --color=never -E "$filter")"
+
+      if grep '^\s*$' <<< "$second_access"; then
+        grep --color=never -B 4 -m1 -e '^\s*$' <<< "$second_access"   #  |\
+      else
+        grep --color=never -B 4 -m2 -E '^\s--?[[:alnum:]]*.*' <<< "$second_access" # |\
+      fi | sed -E '/^[[:space:]]*$/d' | grep -E -A10 "$colorMode" "$searchedParameter\b"
+
       wasFound=$?
     fi
   else  # built-in commands:
@@ -308,7 +348,7 @@ function call_param_if_paralist_is_empty {
 }
 
 
-if [ $targetProgram = "ps" ]; then
+if [ "$targetProgram" = 'ps' ]; then
   set_ps_help_parameter
 fi
 
@@ -415,7 +455,7 @@ else
             # but also single letter parameters like "c" without
             # leading dash.
             if [ "${i:0:2}" = '--' ]; then
-              getDescription "\-\-${i:2}" "$psHelp $psHelpParameter"  # f.e.: "ps --header"
+              getDescription "--${i:2}" "$psHelp $psHelpParameter"  # f.e.: "ps --header"
             elif grep -Eq '[[:alpha:]]{2,}\b' <<< "$i"; then
               echo "$BSD_TITLE"
               for ((j=0;j<${#i};j++))
@@ -442,13 +482,13 @@ else
                 if [ "${i:0:2}" = '--' ]; then
 
                   #      f.e. grep's: "-c, --count"
-                  if ! getDescription "^\s*\-[a-zA-Z0-9]\b[,;]{,1}\s+${i}" "$i" "$j"; then
+                  if ! getDescription "^\s*-[a-zA-Z0-9]\b[,;]{,1}\s+${i}" "$i" "$j"; then
 
                     #        f.e. ls's: "--full-time"
                     if ! getDescription "^\s*${i}" "$1" "$j"; then
 
                       # f.e. grep's: "-q, --quiet, --silent"
-                      getDescription "\-\-${i:2}" "$i" "$j"
+                      getDescription "--${i:2}" "$i" "$j"
 
                     fi
                  fi
@@ -459,13 +499,13 @@ else
                     if ! getDescription "^\s*-${i:1:1}\b" "$i" "$j"; then  ## f.e: "-c"
 
                       showDescription "^\s*--[[:alpha:]]{2,}[,;].*${i}\b" "$i" "$j" "no_color" |\
-                      grep -E --color=always "\-${i:1:1}\W"  ## f.e. "-f" in "--fullscreen, -f …"
+                      grep -E --color=always "-${i:1:1}\W"  ## f.e. "-f" in "--fullscreen, -f …"
                       [ "$?" ] && wasFound=0
                     fi
                   fi
                 fi
               else  # Single sign given als parameter: Adds in the used regex a dash before this sign.
-                getDescription "^\s*\-${i}\b" "$i" "$j"   # f.e: "c" is searched as "-c".
+                getDescription "^\s*-${i}\b" "$i" "$j"   # f.e: "c" is searched as "-c".
               fi
 
               if [ "$wasFound" -eq 0 ]; then
